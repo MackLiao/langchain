@@ -2,32 +2,36 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from langchain_classic import hub
-from langchain_classic.agents import create_react_agent
+from langchain_classic.agents import create_tool_calling_agent
 from langchain_classic.agents.agent import AgentExecutor
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 from langchain_openai import ChatOpenAI
 from langchain_tavily import TavilySearch
 
-from prompt import REACT_PROMPT_WITH_FORMAT_INSTRUCTIONS
 from schemas import AgentResponse
 
 tools = [TavilySearch()]
 llm = ChatOpenAI(model="gpt-4")
 # llm = ChatOpenAI(model="gpt-5")
-react_prompt = hub.pull("hwchase17/react")
+
+# Bind tools to the LLM for native tool calling
+llm_with_tools = llm.bind_tools(tools)
 structured_llm = llm.with_structured_output(AgentResponse)
-react_prompt_with_format_instructions = PromptTemplate(
-    template=REACT_PROMPT_WITH_FORMAT_INSTRUCTIONS,
-    input_variables=["input", "agent_scratchpad", "tools", "tool_names"],
-).partial(format_instructions="")
 
+# Create a simple prompt for tool-calling agent
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You are a helpful assistant. Use the provided tools to answer questions."),
+        ("human", "{input}"),
+        ("placeholder", "{agent_scratchpad}"),
+    ]
+)
 
-agent = create_react_agent(
-    llm=llm,
+agent = create_tool_calling_agent(
+    llm=llm_with_tools,
     tools=tools,
-    prompt=react_prompt_with_format_instructions,
+    prompt=prompt,
 )
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 chain = agent_executor
